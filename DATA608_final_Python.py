@@ -17,9 +17,7 @@ import dash_bootstrap_components as dbc
 import pandas as pd
 import plotly.express as px
 
-import pmdarima as pm
 from statsmodels.tsa.api import ExponentialSmoothing
-from neuralprophet import NeuralProphet
 
 
 
@@ -78,57 +76,6 @@ def process_bike_table(df):
 
 
 
-##
-##  Arima Model
-##
-def run_arima_model(df,train_per,pred_per):
-     
-    # Split Data
-   splt_index = round(df.shape[0] * 0.8)
-    
-    
-    # Train data prep
-   train_df = df[:splt_index]
-   t_idx = round(train_df.shape[0] * (1-train_per/100))
-   train_df = train_df[t_idx:].copy()
-   train = train_df[['bikes_chng','ride_date']]
-   train.set_index('ride_date', inplace=True)
-   train = train.resample('1H').sum()
-
-   
-   
-   # Test data prop
-   test_df = df[splt_index:]
-   t_idx = round(test_df.shape[0] * pred_per/100)
-   test_df = test_df[:t_idx].copy()
-   test = test_df[['bikes_chng','ride_date']]
-   test.set_index('ride_date', inplace=True)
-   test = test.resample('1H').sum()
-    
-    
-    # Initiate and Fit Model
-   arima_model = pm.auto_arima(train, test='adf', 
-                              seasonal=True, 
-                              error_action='ignore',  
-                              suppress_warnings=True, 
-                              stepwise=False)
-    
-   forecast = arima_model.predict(len(test))
-   
-   
-   ar_df = test.copy()
-   ar_df['bikes_chng_pred'] = forecast
-   
-
-   ar_df.reset_index(inplace=True)
-   ar_df = ar_df[['ride_date','bikes_chng_pred']]
-
-    
-   df = pd.concat([train_df,test_df])
-   df = pd.merge(df, ar_df, how="outer", on = ["ride_date"])
-   df.sort_values('ride_date', inplace=True)
-        
-   return df
 
 
 
@@ -182,60 +129,6 @@ def run_ets_model(df, train_per, pred_per):
     
 
 
-##
-##  Neural Prophet Model
-##
-def run_prophet_model(df, train_per, pred_per):
-    
-   
-   splt_index = round(df.shape[0] * 0.8)
-   
-  
-   train_df = df[:splt_index]
-   t_idx = round(train_df.shape[0] * (1-train_per/100))
-   train_df = train_df[t_idx:]
-   train = train_df[['bikes_chng','ride_date']].copy()
-   train.rename({'ride_date' : 'ds' , 'bikes_chng' :'y'
-       }, axis=1, inplace=True)
-   train.set_index('ds', inplace=True)
-   train = train.resample('1H').sum()   
-   train.reset_index(inplace=True)
-
-   test_df = df[splt_index:]
-   t_idx = round(test_df.shape[0] * pred_per/100)
-   test_df = test_df[:t_idx]
-   test = test_df[['bikes_chng','ride_date']].copy()
-   test.rename({'ride_date' : 'ds' , 'bikes_chng' :'y'
-       }, axis=1, inplace=True)
-   test.set_index('ds', inplace=True)
-   test = test.resample('1H').sum()
-   test.reset_index(inplace=True)
-
-
-   
-   # Prophet Forecast
-   m = NeuralProphet(
-        yearly_seasonality=False,
-        weekly_seasonality=False,
-        daily_seasonality=True
-    )
-   
-   m.fit(train, freq='H', validation_df=test, progress="plot")
-   forecast = m.predict(test)
-   
-  
-   proph_pred = forecast[['ds','yhat1']].copy()
-   proph_pred.rename({'ds': 'ride_date',
-                      'yhat1' : 'bikes_chng_pred'
-                      }, axis=1, inplace=True)
-   
-   df = pd.concat([train_df,test_df])
-   df = pd.merge(df, proph_pred, how="outer", on = ["ride_date"])
-   df.sort_values('ride_date', inplace=True)
-   
-   return df
-
-
 
 
 
@@ -259,8 +152,8 @@ bike_df = bike_df.sort_values('ride_date', ascending=True)
 
 
 
-model_df = pd.DataFrame({'label':['1','2','3'],
-                         'value':['Auto SARIMA', 'NeuralProphet' , 'Exponential Smoothing']})
+model_df = pd.DataFrame({'label':['1'],
+                         'value':['Exponential Smoothing']})
 
 
 station_df = bike_df[['station_id','station_name']].drop_duplicates(keep='first')
@@ -313,7 +206,7 @@ app.layout = html.Div(id = 'parent', children = [
        html.Div([
            html.Div(['Select Model:'], style={'text-align':'left'}),
            html.Div( dcc.Dropdown(options=model_df.set_index('label')['value'].to_dict(), id='model_id', 
-                                  value='3', clearable=False),),
+                                  value='1', clearable=False),),
         ], style ={'width':'30%','display':'inline-block'} ),  
        
        html.Div([
@@ -395,9 +288,7 @@ def graph_update(station_id,train_per,pred_per,model_id,n_clicks):
     
     # model selection and predictioin
     if model_id == '1':
-        pred_df = run_arima_model(b_df,train_per,pred_per)
-    elif model_id == '2':
-        pred_df = run_prophet_model(b_df,train_per,pred_per)
+        pred_df = run_ets_model(b_df,train_per,pred_per)
     else:
         pred_df = run_ets_model(b_df,train_per,pred_per)
     
