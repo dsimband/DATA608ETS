@@ -291,7 +291,9 @@ def graph_update(station_id,train_per,pred_per,model_id,n_clicks):
         pred_df = run_ets_model(b_df,train_per,pred_per)
     else:
         pred_df = run_ets_model(b_df,train_per,pred_per)
-    
+
+    # round prediction to int
+    pred_df['bikes_chng_pred'] = pred_df['bikes_chng_pred'].round(0)
     
     
     # create graph
